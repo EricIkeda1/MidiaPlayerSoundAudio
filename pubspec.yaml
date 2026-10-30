@@ -1,0 +1,26 @@
+name: musica
+description: Player mobile e web em Flutter inspirado na referência fornecida.
+publish_to: none
+version: 1.0.2+3
+environment:
+  sdk: '>=3.9.0 <4.0.0'
+  flutter: '>=3.35.7'
+dependencies:
+  flutter:
+    sdk: flutter
+  just_audio: 0.10.5
+  just_audio_background: 0.0.1-beta.17
+  audio_session: 0.2.2
+  file_picker: 10.3.10
+  path_provider: 2.1.5
+  shared_preferences: 2.5.3
+  url_launcher: 6.3.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/art/
+    - assets/audio/
