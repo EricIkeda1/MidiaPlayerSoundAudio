@@ -5,15 +5,25 @@ void main() {
   final manifest = File('android/app/src/main/AndroidManifest.xml');
   if (manifest.existsSync()) {
     var xml = manifest.readAsStringSync();
-    const permissions = '''
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-''';
-    if (!xml.contains('android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK')) {
-      xml = xml.replaceFirst('<application', '$permissions    <application');
+    const permissions = {
+      'INTERNET': '',
+      'ACCESS_NETWORK_STATE': '',
+      'ACCESS_WIFI_STATE': '',
+      'READ_MEDIA_AUDIO': '',
+      'READ_EXTERNAL_STORAGE': ' android:maxSdkVersion="32"',
+      'WAKE_LOCK': '',
+      'FOREGROUND_SERVICE': '',
+      'FOREGROUND_SERVICE_MEDIA_PLAYBACK': '',
+      'POST_NOTIFICATIONS': '',
+    };
+    for (final entry in permissions.entries) {
+      final permission = 'android.permission.${entry.key}';
+      if (!xml.contains('android:name="$permission"')) {
+        xml = xml.replaceFirst(
+          '<application',
+          '<uses-permission android:name="$permission"${entry.value} />\n    <application',
+        );
+      }
     }
     xml = xml.replaceFirst(
       RegExp(r'android:label="[^"]*"'),
@@ -64,6 +74,11 @@ void main() {
     <path android:fillColor="#FFFFFFFF" android:pathData="M12,3v10.55A4,4 0,1 0,14 17V7h4V3z" />
 </vector>''');
   }
+  final keepDirectory = Directory('android/app/src/main/res/raw')
+    ..createSync(recursive: true);
+  File('${keepDirectory.path}/keep.xml').writeAsStringSync(
+    '<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@drawable/ic_stat_music,@drawable/audio_service_*,@mipmap/ic_launcher" />',
+  );
   final plist = File('ios/Runner/Info.plist');
   if (plist.existsSync()) {
     var text = plist.readAsStringSync().replaceAll(

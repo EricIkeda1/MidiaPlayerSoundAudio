@@ -1,4 +1,4 @@
-.dart_tool/
+flutter.dart_tool/
 .packages
 build/
 .flutter-plugins

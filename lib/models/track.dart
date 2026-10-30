@@ -15,6 +15,8 @@ class Track {
     this.lyrics,
   });
 
+  bool get isDeviceTrack => Uri.tryParse(source)?.scheme == 'content';
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
@@ -30,7 +32,7 @@ class Track {
     title: json['title'] as String,
     artist: json['artist'] as String,
     album: json['album'] as String? ?? '',
-    art: json['art'] as String,
+    art: 'icon',
     source: json['source'] as String,
     imported: json['imported'] == true,
     lyrics: json['lyrics'] as String?,
@@ -52,93 +54,50 @@ class Track {
       .toList();
 }
 
-const demoTracks = [
-  Track(
-    id: 'blinding',
-    title: 'Blinding Lights',
-    artist: 'The Weeknd',
-    album: 'After Hours',
-    art: 'after_hours',
-    source: 'night',
-  ),
-  Track(
-    id: 'espresso',
-    title: 'Espresso',
-    artist: 'Sabrina Carpenter',
-    album: 'Short n’ Sweet',
-    art: 'espresso',
-    source: 'sunset',
-  ),
-  Track(
-    id: 'as-it-was',
-    title: 'As It Was',
-    artist: 'Harry Styles',
-    album: 'Harry’s House',
-    art: 'harry',
-    source: 'ocean',
-  ),
-  Track(
-    id: 'flowers',
-    title: 'Flowers',
-    artist: 'Miley Cyrus',
-    album: 'Endless Summer Vacation',
-    art: 'flowers',
-    source: 'sunset',
-  ),
-  Track(
-    id: 'after-hours',
-    title: 'After Hours',
-    artist: 'The Weeknd',
-    album: 'After Hours',
-    art: 'after_hours',
-    source: 'night',
-  ),
-  Track(
-    id: 'anti-hero',
-    title: 'Anti-Hero',
-    artist: 'Taylor Swift',
-    album: 'Midnights',
-    art: 'taylor',
-    source: 'ocean',
-  ),
-  Track(
-    id: 'save-your-tears',
-    title: 'Save Your Tears',
-    artist: 'The Weeknd',
-    album: 'After Hours',
-    art: 'after_hours',
-    source: 'night',
-  ),
-  Track(
-    id: 'levitating',
-    title: 'Levitating',
-    artist: 'Dua Lipa',
-    album: 'Future Nostalgia',
-    art: 'dua',
-    source: 'sunset',
-  ),
-  Track(
-    id: 'hot-hits',
-    title: 'HOT HITS',
-    artist: 'Billie Eilish',
-    art: 'billie',
-    source: 'ocean',
-  ),
-  Track(
-    id: 'short-sweet',
-    title: 'Short n’ Sweet',
-    artist: 'Sabrina Carpenter',
-    art: 'sabrina',
-    source: 'sunset',
-  ),
-  Track(
-    id: 'mayhem',
-    title: 'MAYHEM',
-    artist: 'Lady Gaga',
-    art: 'mayhem',
-    source: 'night',
-  ),
-];
+/// Estado visual de uma biblioteca vazia; nunca é inserido na fila.
+const emptyTrack = Track(
+  id: '',
+  title: 'Nenhuma música selecionada',
+  artist: 'Escolha uma faixa na biblioteca',
+  art: 'icon',
+  source: '',
+  imported: true,
+);
+
+// Somente identificadores usados para migrar dados de versões anteriores.
+const retiredTrackIds = {
+  'blinding',
+  'espresso',
+  'as-it-was',
+  'flowers',
+  'after-hours',
+  'anti-hero',
+  'save-your-tears',
+  'levitating',
+  'hot-hits',
+  'short-sweet',
+  'mayhem',
+};
+const retiredPlaylistNames = {
+  'Chill Vibes',
+  'Mix diário',
+  'Descobertas',
+  'Relax',
+  'Foco',
+};
+Map<String, List<String>> cleanLegacyPlaylists(
+  Map<String, List<String>> input,
+) {
+  final result = <String, List<String>>{};
+  for (final entry in input.entries) {
+    final ids = entry.value
+        .where((id) => !retiredTrackIds.contains(id))
+        .toList();
+    if (ids.isEmpty && retiredPlaylistNames.contains(entry.key)) continue;
+    result[entry.key] = ids;
+  }
+  return result;
+}
 
 String normalize(String text) {
   const accented = 'áàãâäéèêëíìîïóòõôöúùûüç';
@@ -188,5 +147,18 @@ List<LyricLine> parseLrc(String input) {
     }
   }
   result.sort((a, b) => a.time.compareTo(b.time));
+  return result;
+}
+
+/// Substitui apenas a leitura anterior do MediaStore, preservando importações e letras.
+List<Track> mergeDeviceTracks(List<Track> existing, List<Track> scanned) {
+  final old = {for (final t in existing) t.id: t};
+  final result = existing.where((t) => !t.isDeviceTrack).toList();
+  final ids = result.map((t) => t.id).toSet();
+  for (final track in scanned) {
+    if (!ids.add(track.id)) continue;
+    final lyrics = old[track.id]?.lyrics;
+    result.add(lyrics == null ? track : track.withLyrics(lyrics));
+  }
   return result;
 }

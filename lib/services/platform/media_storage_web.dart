@@ -101,3 +101,37 @@ void releaseMedia() {
   }
   _objectUrls.clear();
 }
+
+Future<Uint8List> readAudio(String source) async {
+  final blob = await _read(source);
+  if (blob == null) throw StateError('Áudio não encontrado.');
+  final reader = html.FileReader();
+  final finished = reader.onLoadEnd.first;
+  reader.readAsArrayBuffer(blob);
+  await finished;
+  if (reader.error != null) throw StateError('Não foi possível ler o áudio.');
+  return Uint8List.view(reader.result as ByteBuffer);
+}
+
+Future<void> saveDownload(Uint8List bytes, String name, String mime) async {
+  final url = html.Url.createObjectUrlFromBlob(html.Blob([bytes], mime));
+  final anchor = html.AnchorElement(href: url)..download = name;
+  html.document.body?.append(anchor);
+  anchor.click();
+  anchor.remove();
+  Future.delayed(
+    const Duration(seconds: 2),
+    () => html.Url.revokeObjectUrl(url),
+  );
+}
+
+Future<String> audioExtension(String source) async =>
+    switch ((await _read(source))?.type) {
+      'audio/mpeg' => 'mp3',
+      'audio/mp4' => 'm4a',
+      'audio/wav' => 'wav',
+      'audio/aac' => 'aac',
+      'audio/ogg' => 'ogg',
+      'audio/flac' => 'flac',
+      _ => 'audio',
+    };

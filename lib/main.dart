@@ -5,6 +5,7 @@ import 'package:just_audio_background/just_audio_background.dart';
 
 import 'core/theme.dart';
 import 'services/music_controller.dart';
+import 'services/device_library.dart';
 import 'ui/shell.dart';
 
 Future<void> main() async {
@@ -21,11 +22,13 @@ Future<void> main() async {
     ),
   );
   if (!kIsWeb) {
+    final notification = await DeviceLibrary.notificationStatus();
     await JustAudioBackground.init(
       androidNotificationChannelId: 'app.musica.playback',
       androidNotificationChannelName: 'Reprodução de música',
       androidNotificationOngoing: true,
-      androidNotificationIcon: 'drawable/ic_stat_music',
+      androidNotificationIcon:
+          notification['iconResource'] as String? ?? 'mipmap/ic_launcher',
     );
   }
   final music = MusicController();

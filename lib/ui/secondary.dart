@@ -12,11 +12,15 @@ class PageFrame extends StatelessWidget {
   final String title;
   final Widget child;
   final List<Widget>? actions;
+  final MusicController? music;
+  final int navigationTab;
   const PageFrame({
     super.key,
     required this.title,
     required this.child,
     this.actions,
+    this.music,
+    this.navigationTab = 0,
   });
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -44,12 +48,31 @@ class PageFrame extends StatelessWidget {
               ),
             ),
             Expanded(child: child),
+            if (music != null)
+              secondaryNavigation(context, music!, navigationTab),
           ],
         ),
       ),
     ),
   );
 }
+
+Widget secondaryNavigation(
+  BuildContext context,
+  MusicController music,
+  int selected,
+) => Padding(
+  padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
+  child: FloatingMusicNavigation(
+    music: music,
+    activeIndex: selected,
+    onSelected: (index) {
+      music.selectTab(index);
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    },
+    onPlayer: () => go(context, PlayerScreen(music: music)),
+  ),
+);
 
 class SearchScreen extends StatefulWidget {
   final MusicController music;
@@ -72,7 +95,7 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: m,
     builder: (context, _) {
-      final results = searchTracks(m.tracks, input.text);
+      final results = searchTracks(m.libraryTracks, input.text);
       return Scaffold(
         body: Backdrop(
           child: SafeArea(
@@ -142,7 +165,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           (n) => normalize(n).contains(normalize(input.text)),
                         ))
                           ListTile(
-                            leading: const Art('chill', size: 46),
+                            leading: const Art('icon', size: 46),
                             title: Text(name),
                             onTap: () => go(
                               context,
@@ -218,6 +241,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     ],
                   ),
                 ),
+                secondaryNavigation(context, m, 1),
               ],
             ),
           ),
@@ -237,6 +261,8 @@ class PlaylistScreen extends StatelessWidget {
     builder: (context, _) {
       final tracks = music.playlistTracks(name);
       return PageFrame(
+        music: music,
+        navigationTab: 2,
         title: '',
         actions: [
           IconButton(
@@ -248,7 +274,7 @@ class PlaylistScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
           children: [
-            const Center(child: Art('chill', size: 140, radius: 20)),
+            const Center(child: Art('icon', size: 140, radius: 20)),
             const SizedBox(height: 12),
             Text(
               name,
@@ -366,7 +392,7 @@ class PlaylistScreen extends StatelessWidget {
               style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            for (final t in music.tracks)
+            for (final t in music.libraryTracks)
               MusicTile(
                 track: t,
                 onTap: () {
@@ -405,7 +431,7 @@ class CollectionScreen extends StatelessWidget {
         children: [
           if (externalQuery != null) ...[
             const Text(
-              'Coleção de demonstração',
+              'Pesquisar nos serviços',
               style: TextStyle(color: muted),
             ),
             const SizedBox(height: 12),
@@ -625,6 +651,8 @@ class ServicesScreen extends StatelessWidget {
     animation: music,
     builder: (context, _) => PageFrame(
       title: 'Serviços de música',
+      music: music,
+      navigationTab: 1,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
         children: [
@@ -683,69 +711,107 @@ class SettingsScreen extends StatelessWidget {
   final MusicController music;
   const SettingsScreen({super.key, required this.music});
   @override
-  Widget build(BuildContext context) => PageFrame(
-    title: 'Sua música',
-    child: ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      children: [
-        const Center(child: Art('icon', size: 88, radius: 25)),
-        const SizedBox(height: 15),
-        const Text(
-          'Música',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 24),
-        _tile(
-          Icons.add_rounded,
-          'Importar músicas',
-          'MP3, WAV, M4A, AAC, OGG e FLAC',
-          music.importAudio,
-        ),
-        _tile(
-          Icons.hub_outlined,
-          'Serviços de música',
-          'Spotify e YouTube Music',
-          () => go(context, ServicesScreen(music: music)),
-        ),
-        _tile(
-          Icons.timer_outlined,
-          'Timer de sono',
-          'Sua música descansa com você',
-          () => sleepMenu(context, music),
-        ),
-        const SectionTitle('Prévias da interface'),
-        _tile(
-          Icons.notifications_none_rounded,
-          'Notificação',
-          'Visual inspirado na referência',
-          () => go(context, SystemPreview(music: music, lockScreen: false)),
-        ),
-        _tile(
-          Icons.lock_outline_rounded,
-          'Tela bloqueada',
-          'Visual inspirado na referência',
-          () => go(context, SystemPreview(music: music, lockScreen: true)),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          kIsWeb
-              ? 'No navegador, estas telas são prévias dentro do app. Fechar a aba encerra a reprodução.'
-              : 'Os controles reais de notificação e tela bloqueada são exibidos pelo sistema do aparelho durante a reprodução.',
-          style: TextStyle(fontSize: 12, color: muted, height: 1.5),
-        ),
-        const SizedBox(height: 14),
-        const Text(
-          'As capas e nomes do catálogo reproduzem a referência visual. Os áudios inclusos são prévias instrumentais originais, não gravações dos artistas. Importe seus arquivos para ouvir suas músicas.',
-          style: TextStyle(fontSize: 12, color: muted, height: 1.5),
-        ),
-        const SizedBox(height: 26),
-        const Text(
-          'Versão 1.0.2 • Feito em Flutter',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 11, color: muted),
-        ),
-      ],
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: music,
+    builder: (context, _) => PageFrame(
+      title: 'Configurações',
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        children: [
+          const Center(child: Art('icon', size: 88, radius: 25)),
+          const SizedBox(height: 15),
+          const Text(
+            'Música',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 24),
+          if (music.supportsDeviceLibrary) ...[
+            _tile(
+              Icons.folder_open_rounded,
+              'Músicas do dispositivo',
+              music.scanning
+                  ? 'Procurando músicas...'
+                  : music.libraryPermission == 'granted'
+                  ? '${music.tracks.where((t) => t.isDeviceTrack).length} músicas • Toque para atualizar'
+                  : music.libraryPermission == 'permanentlyDenied'
+                  ? 'Permitir acesso nas configurações do Android'
+                  : 'Permitir acesso à biblioteca de áudio',
+              () {
+                if (music.libraryPermission == 'granted') {
+                  music.refreshDeviceLibrary();
+                } else {
+                  music.requestDeviceMusic();
+                }
+              },
+            ),
+            _tile(
+              Icons.wifi_rounded,
+              'Wi-Fi e internet',
+              music.networkLabel,
+              music.openNetworkSettings,
+            ),
+          ],
+          if (music.supportsDeviceLibrary)
+            _tile(
+              Icons.notifications_active_outlined,
+              'Player nas notificações',
+              music.notifications['allowed'] == true
+                  ? 'Notificações permitidas • Toque para configurar'
+                  : 'Toque para permitir nas configurações do Android',
+              music.openNotificationSettings,
+            ),
+          _tile(
+            Icons.add_rounded,
+            'Importar músicas',
+            'MP3, WAV, M4A, AAC, OGG e FLAC',
+            music.importAudio,
+          ),
+          _tile(
+            Icons.hub_outlined,
+            'Serviços de música',
+            'Spotify e YouTube Music',
+            () => go(context, ServicesScreen(music: music)),
+          ),
+          _tile(
+            Icons.timer_outlined,
+            'Timer de sono',
+            'Sua música descansa com você',
+            () => sleepMenu(context, music),
+          ),
+          const SectionTitle('Prévias da interface'),
+          _tile(
+            Icons.notifications_none_rounded,
+            'Notificação',
+            'Visual inspirado na referência',
+            () => go(context, SystemPreview(music: music, lockScreen: false)),
+          ),
+          _tile(
+            Icons.lock_outline_rounded,
+            'Tela bloqueada',
+            'Visual inspirado na referência',
+            () => go(context, SystemPreview(music: music, lockScreen: true)),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            kIsWeb
+                ? 'No navegador, estas telas são prévias dentro do app. Fechar a aba encerra a reprodução.'
+                : 'Os controles reais de notificação e tela bloqueada são exibidos pelo sistema do aparelho durante a reprodução.',
+            style: TextStyle(fontSize: 12, color: muted, height: 1.5),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Sua biblioteca contém somente músicas do dispositivo e arquivos que você importar.',
+            style: TextStyle(fontSize: 12, color: muted, height: 1.5),
+          ),
+          const SizedBox(height: 26),
+          const Text(
+            'Versão 1.1.1 • Feito em Flutter',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: muted),
+          ),
+        ],
+      ),
     ),
   );
   Widget _tile(

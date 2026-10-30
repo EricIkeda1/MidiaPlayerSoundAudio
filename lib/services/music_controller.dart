@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:just_audio/just_audio.dart';
@@ -12,45 +13,71 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/track.dart';
 import 'platform/media_storage.dart' as storage;
+import 'device_library.dart';
 
 class MusicController extends ChangeNotifier {
   final AudioPlayer player = AudioPlayer();
   final SharedPreferencesAsync prefs = SharedPreferencesAsync();
   final List<StreamSubscription<dynamic>> _subscriptions = [];
-  List<Track> tracks = [...demoTracks];
+  final Map<String, Future<Uri>> _covers = {};
+  List<Track> tracks = [];
   List<Track> queue = [];
   Set<String> favorites = {};
-  Map<String, List<String>> playlists = {
-    'Chill Vibes': ['blinding', 'as-it-was', 'levitating', 'flowers'],
-    'Mix diário': ['blinding', 'espresso', 'as-it-was', 'flowers'],
-    'Descobertas': ['hot-hits', 'short-sweet', 'mayhem'],
-    'Relax': ['as-it-was', 'flowers', 'levitating'],
-    'Foco': ['hot-hits', 'blinding', 'mayhem'],
-  };
+  Map<String, List<String>> playlists = {};
   bool serviceResults = true,
       suggestions = true,
       loading = false,
       ready = false;
   String? error;
+  int navigationIndex = 0;
+  bool scanning = false;
+  String libraryPermission = 'notRequested';
+  Map<String, dynamic> connection = {};
+  bool get supportsDeviceLibrary => DeviceLibrary.supported;
+  List<Track> get localTracks => tracks.where((t) => t.imported).toList();
+  List<Track> get libraryTracks => tracks;
+  bool get hasTracks => tracks.isNotEmpty;
+  Map<String, dynamic> notifications = {};
+  String get networkLabel => connection.isEmpty
+      ? 'Conexão do sistema'
+      : connection['connected'] != true
+      ? 'Sem conexão'
+      : connection['wifi'] == true
+      ? (connection['internet'] == true
+            ? 'Wi-Fi conectado'
+            : 'Wi-Fi sem internet')
+      : connection['internet'] == true
+      ? 'Internet conectada'
+      : 'Rede sem internet';
+  void selectTab(int index) {
+    navigationIndex = index;
+    notifyListeners();
+  }
+
   Timer? _sleepTimer;
   DateTime? sleepUntil;
   Track get current => queue.isNotEmpty
       ? queue[(player.currentIndex ?? 0).clamp(0, queue.length - 1)]
-      : tracks.first;
+      : tracks.firstOrNull ?? emptyTrack;
   bool get playing => player.playing;
   bool get shuffled => player.shuffleModeEnabled;
   Duration get position => player.position;
-  Duration get duration => player.duration ?? const Duration(seconds: 24);
+  Duration get duration => player.duration ?? Duration.zero;
 
   Future<void> initialize() async {
     try {
       favorites = (await prefs.getStringList('favorites') ?? []).toSet();
+      favorites.removeAll(retiredTrackIds);
+      await prefs.setStringList('favorites', favorites.toList());
       serviceResults = await prefs.getBool('serviceResults') ?? true;
       suggestions = await prefs.getBool('suggestions') ?? true;
       final imported = await prefs.getString('imported');
       if (imported != null) {
         for (final track in Track.decode(imported)) {
-          if (await storage.hasAudio(track.source)) tracks.add(track);
+          if (track.imported &&
+              !retiredTrackIds.contains(track.id) &&
+              await storage.hasAudio(track.source))
+            tracks.add(track);
         }
       }
       final saved = await prefs.getString('playlists');
@@ -59,9 +86,13 @@ class MusicController extends ChangeNotifier {
           (key, value) => MapEntry(key, List<String>.from(value as List)),
         );
       }
+      playlists = cleanLegacyPlaylists(playlists);
+      await prefs.setString('playlists', jsonEncode(playlists));
       final lyrics = await prefs.getString('lyrics');
       if (lyrics != null) {
         final map = jsonDecode(lyrics) as Map<String, dynamic>;
+        map.removeWhere((key, _) => retiredTrackIds.contains(key));
+        await prefs.setString('lyrics', jsonEncode(map));
         tracks = tracks
             .map(
               (t) =>
@@ -86,6 +117,15 @@ class MusicController extends ChangeNotifier {
       ]);
       await setQueue(tracks.take(8).toList(), autoplay: false);
       ready = true;
+      if (supportsDeviceLibrary) {
+        _subscriptions.add(
+          DeviceLibrary.networkChanges.listen((value) {
+            connection = value;
+            notifyListeners();
+          }, onError: (_) {}),
+        );
+        await refreshDeviceLibrary();
+      }
     } catch (e) {
       error = 'O player não pôde iniciar. Tente abrir o app novamente.';
     }
@@ -93,16 +133,17 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<AudioSource> _source(Track t) async {
-    final artUri = await storage.coverUri(t.art);
+    final artUri = await _covers.putIfAbsent(
+      t.art,
+      () => storage.coverUri(t.art),
+    );
     return AudioSource.uri(
-      t.imported
-          ? await storage.audioUri(t.source)
-          : Uri.parse('asset:///assets/audio/${t.source}.wav'),
+      await storage.audioUri(t.source),
       tag: MediaItem(
         id: t.id,
         title: t.title,
         artist: t.artist,
-        album: t.imported ? t.album : '${t.album} • demonstração instrumental',
+        album: t.album,
         artUri: artUri,
       ),
     );
@@ -118,6 +159,7 @@ class MusicController extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
+      await preparePlayback(requestPermission: autoplay);
       final sources = await Future.wait(items.map(_source));
       await player.pause();
       await player.setAudioSources(
@@ -135,13 +177,14 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<void> playTrack(Track track, {List<Track>? from}) async {
-    final list = from ?? tracks.take(8).toList();
+    final list = List<Track>.of(from ?? libraryTracks);
     if (!list.any((t) => t.id == track.id)) list.add(track);
     await setQueue(list, index: list.indexWhere((t) => t.id == track.id));
   }
 
   Future<void> _play() async {
     try {
+      await preparePlayback();
       await player.play();
     } catch (_) {
       error = 'Não foi possível reproduzir este áudio.';
@@ -150,7 +193,7 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<void> toggle() async {
-    if (loading) return;
+    if (loading || !hasTracks) return;
     if (queue.isEmpty) {
       await setQueue([current]);
       return;
@@ -165,6 +208,7 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<void> next() async {
+    if (queue.isEmpty) return;
     if (player.hasNext) {
       await player.seekToNext();
     } else {
@@ -173,6 +217,7 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<void> previous() async {
+    if (queue.isEmpty) return;
     if (position.inSeconds > 3) {
       await player.seek(Duration.zero);
     } else if (player.hasPrevious) {
@@ -249,6 +294,99 @@ class MusicController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> refreshDeviceLibrary({bool requestPermission = false}) async {
+    if (!supportsDeviceLibrary || scanning) return;
+    scanning = true;
+    notifyListeners();
+    try {
+      connection = await DeviceLibrary.network();
+      notifications = await DeviceLibrary.notificationStatus();
+      final result = await DeviceLibrary.scan(
+        requestPermission: requestPermission,
+      );
+      libraryPermission = result.status;
+      final stored = await prefs.getString('lyrics');
+      final lyrics = stored == null
+          ? <String, dynamic>{}
+          : jsonDecode(stored) as Map<String, dynamic>;
+      final scanned = result.tracks
+          .map(
+            (t) => lyrics[t.id] is String
+                ? t.withLyrics(lyrics[t.id] as String)
+                : t,
+          )
+          .toList();
+      tracks = mergeDeviceTracks(tracks, scanned);
+      if (libraryPermission == 'granted' &&
+          localTracks.isNotEmpty &&
+          !playing &&
+          queue.isEmpty) {
+        await setQueue(localTracks, autoplay: false);
+      }
+      // Não mantenha áudio acessível depois da revogação da permissão.
+      if (libraryPermission != 'granted' && queue.any((t) => t.isDeviceTrack)) {
+        await clearQueue();
+      }
+    } catch (_) {
+      error = 'Não foi possível atualizar as músicas do dispositivo.';
+    } finally {
+      scanning = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> requestDeviceMusic() async {
+    if (!supportsDeviceLibrary) {
+      await importAudio();
+      return;
+    }
+    if (libraryPermission == 'permanentlyDenied') {
+      await DeviceLibrary.openSettings();
+      return;
+    }
+    await refreshDeviceLibrary(requestPermission: true);
+  }
+
+  Future<void> preparePlayback({bool requestPermission = true}) async {
+    notifications = await DeviceLibrary.preparePlayback(
+      requestPermission: requestPermission,
+    );
+    if (supportsDeviceLibrary && notifications['iconValid'] != true) {
+      throw StateError(
+        'Ícone da notificação não está instalado. Reinstale o APK atualizado.',
+      );
+    }
+  }
+
+  Future<void> openNotificationSettings() =>
+      DeviceLibrary.openNotificationSettings();
+
+  Future<void> openNetworkSettings() => DeviceLibrary.openWifiSettings();
+  Future<bool> shareLyrics(String text) async {
+    if (await DeviceLibrary.shareLyrics(text)) return true;
+    await Clipboard.setData(ClipboardData(text: text));
+    return false;
+  }
+
+  Future<void> downloadCurrent() async {
+    try {
+      final track = current;
+      if (!hasTracks) return;
+      final bytes = await storage.readAudio(track.source);
+      final title = track.title.replaceAll(RegExp(r'[^a-zA-Z0-9À-ÿ _-]'), '_');
+      final extension = '.${await storage.audioExtension(track.source)}';
+      await storage.saveDownload(
+        bytes,
+        '$title$extension',
+        'application/octet-stream',
+      );
+    } catch (_) {
+      error =
+          'Não foi possível salvar o áudio. Verifique a permissão e tente novamente.';
+      notifyListeners();
+    }
+  }
+
   Future<void> importAudio() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -275,7 +413,7 @@ class MusicController extends ChangeNotifier {
             title: title,
             artist: 'No dispositivo',
             album: 'Importadas',
-            art: 'chill',
+            art: 'icon',
             source: source,
             imported: true,
           ),
@@ -283,7 +421,9 @@ class MusicController extends ChangeNotifier {
       }
       await prefs.setString(
         'imported',
-        Track.encode(tracks.where((t) => t.imported).toList()),
+        Track.encode(
+          tracks.where((t) => t.imported && !t.isDeviceTrack).toList(),
+        ),
       );
       notifyListeners();
     } catch (e) {
@@ -294,6 +434,7 @@ class MusicController extends ChangeNotifier {
 
   Future<void> importLyrics() async {
     try {
+      if (!hasTracks) return;
       final id = current.id;
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -330,7 +471,8 @@ class MusicController extends ChangeNotifier {
   }
 
   Future<bool> openService(bool spotify, [String? query]) async {
-    final q = query ?? '${current.title} ${current.artist}';
+    final q =
+        query ?? (hasTracks ? '${current.title} ${current.artist}' : 'Música');
     final uri = spotify
         ? Uri.https('open.spotify.com', '/search/$q')
         : Uri.https('music.youtube.com', '/search', {'q': q});

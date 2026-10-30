@@ -14,14 +14,16 @@ class MusicShell extends StatefulWidget {
   State<MusicShell> createState() => _MusicShellState();
 }
 
-class _MusicShellState extends State<MusicShell> {
-  int tab = 0;
+class _MusicShellState extends State<MusicShell> with WidgetsBindingObserver {
+  int get tab => m.navigationIndex;
+  set tab(int value) => m.navigationIndex = value;
   String homeFilter = 'Tudo', libraryFilter = 'Músicas', exploreFilter = 'Tudo';
   MusicController get m => widget.music;
   @override
   void initState() {
     super.initState();
     m.addListener(_changed);
+    WidgetsBinding.instance.addObserver(this);
   }
 
   void _changed() {
@@ -39,11 +41,17 @@ class _MusicShellState extends State<MusicShell> {
   @override
   void dispose() {
     m.removeListener(_changed);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && m.ready) m.refreshDeviceLibrary();
+  }
+
   void openPlayer(Track track) {
-    m.playTrack(track);
+    m.playTrack(track, from: m.libraryTracks);
     go(context, PlayerScreen(music: m));
   }
 
@@ -83,7 +91,7 @@ class _MusicShellState extends State<MusicShell> {
     ),
   );
 
-  Widget _header(String title, {bool avatar = false}) => Padding(
+  Widget _header(String title, {bool menu = false}) => Padding(
     padding: const EdgeInsets.only(top: 12, bottom: 12),
     child: Row(
       children: [
@@ -91,17 +99,113 @@ class _MusicShellState extends State<MusicShell> {
           child: Text(title, style: Theme.of(context).textTheme.headlineLarge),
         ),
         IconButton(
-          tooltip: avatar ? 'Configurações' : 'Buscar',
-          onPressed: avatar
-              ? () => go(context, SettingsScreen(music: m))
-              : search,
-          icon: avatar
-              ? const Art('avatar', size: 33, radius: 30)
+          tooltip: menu ? 'Menu' : 'Buscar',
+          onPressed: menu ? () => _openMenu() : search,
+          icon: menu
+              ? const Icon(Icons.more_horiz_rounded)
               : const Icon(Icons.search_rounded),
         ),
       ],
     ),
   );
+  void _openMenu() => showModalBottomSheet<void>(
+    context: context,
+    builder: (sheet) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (i, label) in [
+              'Início',
+              'Explorar',
+              'Biblioteca',
+            ].indexed)
+              ListTile(
+                leading: Icon(
+                  [
+                    Icons.home_rounded,
+                    Icons.search_rounded,
+                    Icons.library_music_rounded,
+                  ][i],
+                ),
+                title: Text(label),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  setState(() => tab = i);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.hub_outlined),
+              title: const Text('Serviços de música'),
+              onTap: () {
+                Navigator.pop(sheet);
+                go(context, ServicesScreen(music: m));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Configurações'),
+              onTap: () {
+                Navigator.pop(sheet);
+                go(context, SettingsScreen(music: m));
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _deviceAccess() => Padding(
+    padding: const EdgeInsets.only(top: 12, bottom: 6),
+    child: Material(
+      color: Colors.white.withValues(alpha: .7),
+      borderRadius: BorderRadius.circular(22),
+      child: ListTile(
+        leading: Icon(
+          m.libraryPermission == 'granted'
+              ? Icons.library_music_outlined
+              : Icons.folder_open_rounded,
+          color: violet,
+        ),
+        title: Text(
+          m.libraryPermission == 'granted'
+              ? '${m.tracks.where((t) => t.isDeviceTrack).length} músicas no dispositivo'
+              : 'Acessar músicas do dispositivo',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          m.libraryPermission == 'granted'
+              ? m.networkLabel
+              : 'Permita o acesso para encontrar suas músicas',
+          style: const TextStyle(fontSize: 11, color: muted),
+        ),
+        trailing: m.scanning
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                m.libraryPermission == 'granted'
+                    ? Icons.refresh_rounded
+                    : Icons.chevron_right_rounded,
+                color: violet,
+              ),
+        onTap: m.scanning
+            ? null
+            : () {
+                if (m.libraryPermission == 'granted') {
+                  m.refreshDeviceLibrary();
+                } else {
+                  m.requestDeviceMusic();
+                }
+              },
+      ),
+    ),
+  );
+
   Widget _search() => InkWell(
     onTap: search,
     borderRadius: BorderRadius.circular(28),
@@ -132,28 +236,36 @@ class _MusicShellState extends State<MusicShell> {
   Widget _home() {
     final isGroups = ['Álbuns', 'Artistas', 'Playlists'].contains(homeFilter);
     return _scroll([
-      _header('Música', avatar: true),
+      _header('Música', menu: true),
       _search(),
+      if (m.supportsDeviceLibrary && m.libraryPermission != 'granted')
+        _deviceAccess(),
       const SizedBox(height: 9),
       FilterPills(
         labels: const ['Tudo', 'Músicas', 'Álbuns', 'Artistas', 'Playlists'],
         selected: homeFilter,
         onSelected: (v) => setState(() => homeFilter = v),
       ),
-      if (isGroups) ...[
+      if (!m.hasTracks && !isGroups)
+        EmptyLibrary(music: m)
+      else if (isGroups) ...[
         SectionTitle(homeFilter),
-        if (homeFilter == 'Playlists')
-          ...m.playlists.keys.map((name) => _playlistTile(name))
+        if (homeFilter == 'Playlists') ...[
+          ...m.playlists.keys.map(_playlistTile),
+          ListTile(
+            leading: const Icon(Icons.playlist_add_rounded, color: violet),
+            title: const Text('Criar playlist'),
+            onTap: () => newPlaylist(context, m),
+          ),
+        ] else if (!m.hasTracks)
+          EmptyLibrary(music: m)
         else
           ..._groups(homeFilter == 'Artistas'),
       ] else ...[
-        SectionTitle(
-          'Tocados recentemente',
-          onAll: () => setState(() => tab = 2),
-        ),
-        AlbumGrid(tracks: m.tracks.take(4).toList(), onTap: openPlayer),
+        SectionTitle('Suas músicas', onAll: () => setState(() => tab = 2)),
+        AlbumGrid(tracks: m.libraryTracks.take(4).toList(), onTap: openPlayer),
         if (m.suggestions && m.favorites.isNotEmpty) ...[
-          const SectionTitle('Seu mix de favoritas'),
+          const SectionTitle('Feito para você'),
           AlbumGrid(
             tracks: m.tracks
                 .where((t) => m.favorites.contains(t.id))
@@ -163,154 +275,29 @@ class _MusicShellState extends State<MusicShell> {
           ),
         ],
         SectionTitle(
-          'Feito para você',
-          onAll: () => setState(() {
-            tab = 2;
-            libraryFilter = 'Playlists';
-          }),
+          'No seu dispositivo',
+          onAll: () => setState(() => tab = 2),
         ),
-        LayoutBuilder(
-          builder: (context, c) => Row(
-            children: [
-              for (final (i, name) in [
-                'Mix diário',
-                'Descobertas',
-                'Relax',
-                'Foco',
-              ].indexed) ...[
-                if (i > 0) const SizedBox(width: 10),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => playlist(name),
-                    borderRadius: BorderRadius.circular(18),
-                    child: Column(
-                      children: [
-                        Container(
-                          height: (c.maxWidth - 30) / 4,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(15),
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                const [
-                                  Color(0xFFB49AFF),
-                                  Color(0xFFFF81BC),
-                                  Color(0xFF8C8AFF),
-                                  Color(0xFF78C5FA),
-                                ][i],
-                                const [
-                                  Color(0xFFE6D3FF),
-                                  Color(0xFFFFD3EB),
-                                  Color(0xFFCCD1FF),
-                                  Color(0xFFD0EFFF),
-                                ][i],
-                              ],
-                            ),
-                          ),
-                          child: Center(
-                            child: Transform.rotate(
-                              angle: -.35,
-                              child: Icon(
-                                [
-                                  Icons.album_rounded,
-                                  Icons.auto_awesome,
-                                  Icons.headphones_rounded,
-                                  Icons.headset_rounded,
-                                ][i],
-                                color: const [
-                                  Color(0xFF5C28BA),
-                                  Color(0xFFAD195B),
-                                  Color(0xFF2D35C2),
-                                  Color(0xFF1673AE),
-                                ][i],
-                                size: 33,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 7),
-                        Text(
-                          name,
-                          maxLines: 1,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
+        for (final t in m.tracks.take(5))
+          MusicTile(
+            track: t,
+            active: m.current.id == t.id,
+            onTap: () => openPlayer(t),
+            onMore: () => trackMenu(context, m, t),
           ),
-        ),
         SectionTitle(
-          'Playlists para você',
+          'Suas playlists',
           onAll: () => setState(() {
             tab = 2;
             libraryFilter = 'Playlists';
           }),
         ),
-        Row(
-          children: [
-            for (final (i, name) in [
-              'Chill Vibes',
-              'Mix diário',
-              'Relax',
-              'Descobertas',
-            ].indexed) ...[
-              if (i > 0) const SizedBox(width: 10),
-              Expanded(
-                child: InkWell(
-                  onTap: () => playlist(name),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AspectRatio(
-                        aspectRatio: 1,
-                        child: Art(
-                          ['chill', 'after_hours', 'flowers', 'espresso'][i],
-                          radius: 13,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ],
+        ...m.playlists.keys.map(_playlistTile),
+        TextButton.icon(
+          onPressed: () => newPlaylist(context, m),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Criar playlist'),
         ),
-        if (m.tracks.any((t) => t.imported)) ...[
-          SectionTitle(
-            'No seu dispositivo',
-            onAll: () => setState(() {
-              tab = 2;
-              libraryFilter = 'Downloads';
-            }),
-          ),
-          ...m.tracks
-              .where((t) => t.imported)
-              .take(4)
-              .map(
-                (t) => MusicTile(
-                  track: t,
-                  onTap: () => openPlayer(t),
-                  onMore: () => trackMenu(context, m, t),
-                ),
-              ),
-        ],
       ],
     ]);
   }
@@ -357,15 +344,11 @@ class _MusicShellState extends State<MusicShell> {
       exploreFilter == 'Tudo' ? 'Destaques' : exploreFilter,
       onAll: () => go(
         context,
-        CollectionScreen(
-          music: m,
-          title: 'Destaques',
-          tracks: m.tracks.skip(8).toList(),
-        ),
+        CollectionScreen(music: m, title: 'Destaques', tracks: m.libraryTracks),
       ),
     ),
     AlbumGrid(
-      tracks: m.tracks.skip(8).take(3).toList(),
+      tracks: m.libraryTracks.take(3).toList(),
       onTap: openPlayer,
       columns: 3,
     ),
@@ -448,18 +431,18 @@ class _MusicShellState extends State<MusicShell> {
       ),
     ),
     SectionTitle(
-      'Lançamentos',
+      'Adicionadas recentemente',
       onAll: () => go(
         context,
         CollectionScreen(
           music: m,
-          title: 'Lançamentos',
+          title: 'Adicionadas recentemente',
           tracks: m.tracks.take(8).toList(),
         ),
       ),
     ),
     AlbumGrid(
-      tracks: [m.tracks[1], m.tracks[9], m.tracks[10]],
+      tracks: m.libraryTracks.reversed.take(3).toList(),
       onTap: openPlayer,
       columns: 3,
     ),
@@ -491,7 +474,7 @@ class _MusicShellState extends State<MusicShell> {
       CollectionScreen(
         music: m,
         title: genre,
-        tracks: m.tracks.take(8).toList(),
+        tracks: const [],
         externalQuery: genre,
       ),
     );
@@ -531,6 +514,7 @@ class _MusicShellState extends State<MusicShell> {
 
   Widget _library() => _scroll([
     _header('Biblioteca'),
+    if (m.supportsDeviceLibrary) _deviceAccess(),
     FilterPills(
       labels: const ['Músicas', 'Álbuns', 'Artistas', 'Playlists', 'Downloads'],
       selected: libraryFilter,
@@ -575,7 +559,7 @@ class _MusicShellState extends State<MusicShell> {
             onPressed: () async {
               final items = libraryFilter == 'Downloads'
                   ? m.tracks.where((t) => t.imported).toList()
-                  : m.tracks.take(8).toList();
+                  : m.libraryTracks;
               if (items.isEmpty) return;
               await m.setQueue(items);
               if (!m.shuffled) await m.shuffle();
@@ -592,7 +576,7 @@ class _MusicShellState extends State<MusicShell> {
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                 ),
                 Text(
-                  '${libraryFilter == 'Downloads' ? m.tracks.where((t) => t.imported).length : m.tracks.length} faixas',
+                  '${libraryFilter == 'Downloads' ? m.tracks.where((t) => t.imported).length : m.libraryTracks.length} faixas',
                   style: const TextStyle(color: muted, fontSize: 11),
                 ),
               ],
@@ -609,53 +593,20 @@ class _MusicShellState extends State<MusicShell> {
       for (final t
           in libraryFilter == 'Downloads'
               ? m.tracks.where((t) => t.imported)
-              : [
-                  m.tracks[0],
-                  m.tracks[4],
-                  m.tracks[5],
-                  m.tracks[2],
-                  m.tracks[6],
-                  m.tracks[7],
-                  m.tracks[3],
-                  ...m.tracks.where((t) => t.imported),
-                ])
+              : m.libraryTracks)
         MusicTile(
           track: t,
           active: m.current.id == t.id,
           onTap: () => openPlayer(t),
           onMore: () => trackMenu(context, m, t),
         ),
-      if (libraryFilter == 'Downloads' && !m.tracks.any((t) => t.imported))
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 50, horizontal: 20),
-          child: Column(
-            children: [
-              const Icon(Icons.library_music_outlined, size: 48, color: violet),
-              const SizedBox(height: 16),
-              const Text(
-                'Suas músicas, aqui.',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Importe arquivos do celular para ouvir offline.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: muted),
-              ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: m.importAudio,
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Importar músicas'),
-              ),
-            ],
-          ),
-        ),
+      if (!m.hasTracks) EmptyLibrary(music: m),
     ],
   ]);
   List<Widget> _groups(bool artists) {
+    if (!m.hasTracks) return [EmptyLibrary(music: m)];
     final groups = <String, List<Track>>{};
-    for (final t in m.tracks) {
+    for (final t in m.libraryTracks) {
       groups
           .putIfAbsent(
             artists
@@ -693,7 +644,7 @@ class _MusicShellState extends State<MusicShell> {
 
   Widget _playlistTile(String name) => ListTile(
     contentPadding: const EdgeInsets.symmetric(vertical: 4),
-    leading: const Art('chill', size: 54, radius: 12),
+    leading: const Art('icon', size: 54, radius: 12),
     title: Text(name),
     subtitle: Text(
       '${m.playlistTracks(name).length} músicas',
@@ -702,86 +653,10 @@ class _MusicShellState extends State<MusicShell> {
     trailing: const Icon(Icons.chevron_right_rounded),
     onTap: () => playlist(name),
   );
-  Widget _navigation() => Glass(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
-      child: Row(
-        children: [
-          for (final (i, label) in ['Início', 'Explorar', 'Biblioteca'].indexed)
-            Expanded(
-              child: Semantics(
-                selected: tab == i,
-                button: true,
-                label: label,
-                child: InkWell(
-                  onTap: () => setState(() => tab = i),
-                  borderRadius: BorderRadius.circular(28),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    decoration: BoxDecoration(
-                      color: tab == i
-                          ? const Color(0xFFE1DDFF)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 9),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          [
-                            tab == 0 ? Icons.home_rounded : Icons.home_outlined,
-                            Icons.search_rounded,
-                            tab == 2
-                                ? Icons.library_music_rounded
-                                : Icons.library_music_outlined,
-                          ][i],
-                          color: tab == i ? violet : const Color(0xFF535574),
-                          size: 23,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: tab == i
-                                ? FontWeight.w700
-                                : FontWeight.w400,
-                            color: tab == i ? violet : const Color(0xFF535574),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          const SizedBox(width: 7),
-          Semantics(
-            button: true,
-            label: 'Abrir player: ${m.current.title}',
-            child: InkWell(
-              onTap: () => go(context, PlayerScreen(music: m)),
-              borderRadius: BorderRadius.circular(20),
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Art(m.current.art, size: 43, radius: 15),
-                    if (m.playing)
-                      const Icon(
-                        Icons.equalizer_rounded,
-                        size: 23,
-                        color: Colors.white,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
+  Widget _navigation() => FloatingMusicNavigation(
+    music: m,
+    activeIndex: tab,
+    onSelected: (index) => setState(() => tab = index),
+    onPlayer: () => go(context, PlayerScreen(music: m)),
   );
 }

@@ -22,6 +22,12 @@ Future<void> main() async {
       bytes: Uint8List.fromList([82, 73, 70, 70]),
     );
     check(await storage.hasAudio(source), 'Arquivo persistido no IndexedDB');
+    final bytes = await storage.readAudio(source);
+    check(bytes.length == 4 && bytes[0] == 82, 'Leitura dos bytes do áudio');
+    check(
+      await storage.audioExtension(source) == 'wav',
+      'Extensão do download',
+    );
     final uri = await storage.audioUri(source);
     check(uri.scheme == 'blob', 'URL de reprodução');
     check(await storage.audioUri(source) == uri, 'Reuso de URL temporária');

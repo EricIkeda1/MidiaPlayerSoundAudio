@@ -1,52 +1,46 @@
-# Validação da versão 1.0.2
+# Verificação da versão 1.1.1
 
-## Compatibilidade corrigida
+## Problema informado
 
-- Flutter mínimo: **3.35.7**, igual à versão informada pelo desenvolvedor.
-- Dart mínimo: 3.9.0. Verificações locais executadas com **Dart 3.9.2**.
-- Removida a exigência incorreta de Flutter 3.47.
-- Dependências diretas fixadas em versões cujos requisitos de SDK aceitam o Flutter/Dart alvo, conforme os metadados oficiais de pub.dev.
-- `just_audio` fixado em 0.10.5. As APIs utilizadas (`setAudioSources`, `addAudioSource`, `moveAudioSource`, `clearAudioSources` e `errorStream`) foram conferidas no código-fonte oficial dessa versão.
-- Android/iOS refeitos a partir dos templates oficiais da tag Flutter **3.35.7**, commit `adc901062556672b4138e18a4dc62a4be8f4b3c2`.
-- Android: Gradle 8.12, Android Gradle Plugin 8.9.1 e Kotlin 2.1.0, conforme os templates dessa tag. Gradle Wrapper correspondente incluído.
-- iOS: AppDelegate tradicional, sem FlutterImplicitEngineDelegate e SceneDelegate das versões mais novas. Reprodução de áudio em segundo plano mantida.
+As imagens do aparelho mostram `java.lang.IllegalArgumentException: Invalid notification (no valid small icon)`, durante a publicação da notificação no canal `app.musica.playback`.
 
-## Verificações concluídas
+O código-fonte oficial do audio_service 0.18.18 foi conferido: ele resolve o ícone configurado por `getResources().getIdentifier(...)` e passa o resultado para `setSmallIcon(...)`. A causa exata da ausência do recurso no APK instalado não pôde ser inspecionada; a correção cobre recurso ausente/removido pelo build e validação/fallback do identificador.
 
-- Formatação e interpretação de todos os arquivos Dart com o executável de Dart 3.9.2.
-- `dart tool/check_models.dart`: **17 verificações passaram**, incluindo busca, persistência e leitura LRC.
-- `dart compile js tool/check_browser_storage.dart`: **compilação JavaScript concluída com Dart 3.9.2**. Esse teste importa a implementação real de armazenamento web.
-- Conferência de sintaxe, XML, plists, ícones e manifesto web.
-- Conferência dos metadados do serviço de mídia no Android e de UIBackgroundModes na raiz do Info.plist no iOS.
+## Alterações
+
+- Ícone PNG branco/transparente em mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi; recurso vetorial mantido como fallback.
+- Referências Kotlin a `R.drawable.ic_stat_music` e `R.mipmap.ic_launcher`, regras tools:keep e remoção de recursos/minificação desativadas no release.
+- Validação do ícone antes de configurar o serviço e antes de carregar/reproduzir; compatibilidade com o launcher em atualização parcial.
+- Autorização de notificações em tempo de execução no Android 13+, no primeiro início de reprodução, e atalho para as configurações de notificações do Android.
+- Todas as músicas, WAVs, capas comerciais, letras e playlists de demonstração retirados.
+- Migração dos dados antigos removendo somente os exemplos conhecidos e preservando arquivos/importações/playlists reais.
+- Biblioteca vazia tratada sem acesso a índices fixos ou reprodução de arquivo vazio.
+
+## Verificado localmente
+
+- `dart tool/check_models.dart`: **28 verificações passaram**, com Dart 3.9.2. Inclui migração idempotente, preservação de playlists reais e estado vazio sem arquivo de áudio.
+- Formatação e sintaxe Dart/Kotlin conferidas.
+- Teste de armazenamento web compilado para JavaScript com Dart 3.9.2.
+- Declarações de recursos, configurações de release e permissões conferidas estaticamente.
+- PNGs de notificação conferidos quanto a tamanho, transparência e pixels visíveis.
+- Assets restritos ao ícone do aplicativo; sem áudios incluídos.
 - ZIP conferido quanto à integridade.
 
-## Recursos web preservados
+## Ainda pendente
 
-`web/index.html`, manifesto e ícones estão incluídos. Chrome/Edge usam a mesma interface, centralizada com largura máxima de 480 px. A importação lê bytes no navegador e persiste áudio no IndexedDB; mobile usa arquivos locais. Os serviços de áudio nativos são inicializados somente fora da web.
+Build Flutter/Android, resolução completa das dependências, testes de widgets e instalação em aparelho. É necessário confirmar que o APK gerado contém os recursos e que uma faixa real reproduz com a notificação ativa no aparelho do usuário. Não foi gerado um APK nesta entrega.
 
-## Validação ainda pendente
+A inicialização do Flutter foi bloqueada anteriormente pela revisão automática por tentativa de acesso a metadados da infraestrutura, que podem expor credenciais. O comando bloqueado não foi repetido. Os testes concluídos usaram o executável de Dart, arquivos locais e gramáticas de sintaxe.
 
-O build Flutter completo, a resolução transitiva das dependências, os testes de widgets e a execução real em Chrome/Edge/Android/iOS precisam ser realizados no ambiente do desenvolvedor. Não foi gerado um pubspec.lock nem um APK. A checagem dos requisitos das dependências diretas não substitui `flutter pub get`.
+## Validação no Android
 
-A inicialização do Flutter neste ambiente foi bloqueada anteriormente pela revisão automática por tentativa de acesso a metadados da infraestrutura, que podem expor credenciais. O comando bloqueado não foi repetido. Os testes concluídos usaram apenas o executável de Dart e os arquivos locais. A tentativa anterior de obter um navegador de teste também não forneceu um ZIP válido; os sete cenários do teste web foram compilados, mas não executados em navegador.
+1. Substituir todos os arquivos, incluindo a pasta android.
+2. Executar flutter clean, flutter pub get e flutter build apk --release.
+3. Atualizar o aplicativo com o APK gerado, sem apagar seus dados.
+4. Autorizar músicas e notificações quando solicitado.
+5. Reproduzir uma música real do dispositivo e verificar play/pause/próxima/anterior na central de notificações e na tela bloqueada.
 
-## Executar no seu computador
-
-Substitua os arquivos do projeto pelo conteúdo da pasta `musica` do ZIP. Na pasta que contém `pubspec.yaml`:
-
-```powershell
-flutter clean
-flutter pub get
-flutter run -d chrome --web-port=7357
-```
-
-Para Edge, troque `chrome` por `edge`.
-
-Para as verificações completas:
-
-```powershell
-flutter analyze
-flutter test
-```
-
-Os scripts de inicialização não atualizam automaticamente seu Flutter.
+Fontes oficiais:
+- https://pub.dev/packages/audio_service
+- https://developer.android.com/develop/ui/views/notifications/notification-permission
+- https://developer.android.com/topic/performance/app-optimization/customize-which-resources-to-keep

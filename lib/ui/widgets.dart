@@ -337,7 +337,7 @@ class ProgressBar extends StatelessWidget {
             min: 0,
             max: max,
             value: music.position.inMilliseconds.toDouble().clamp(0, max),
-            onChanged: music.loading ? null : music.seek,
+            onChanged: music.loading || !music.hasTracks ? null : music.seek,
           ),
         ),
         Row(
@@ -601,4 +601,148 @@ Future<String?> newPlaylist(BuildContext context, MusicController music) async {
   Future.delayed(const Duration(seconds: 1), input.dispose);
   if (name != null) await music.createPlaylist(name);
   return name;
+}
+
+class FloatingMusicNavigation extends StatelessWidget {
+  final MusicController music;
+  final int activeIndex;
+  final ValueChanged<int> onSelected;
+  final VoidCallback onPlayer;
+  const FloatingMusicNavigation({
+    super.key,
+    required this.music,
+    required this.activeIndex,
+    required this.onSelected,
+    required this.onPlayer,
+  });
+  @override
+  Widget build(BuildContext context) => Glass(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
+      child: Row(
+        children: [
+          for (final (i, label) in ['Início', 'Explorar', 'Biblioteca'].indexed)
+            Expanded(
+              child: Semantics(
+                selected: activeIndex == i,
+                button: true,
+                label: label,
+                child: InkWell(
+                  onTap: () => onSelected(i),
+                  borderRadius: BorderRadius.circular(28),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    decoration: BoxDecoration(
+                      color: activeIndex == i
+                          ? const Color(0xFFE1DDFF)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          [
+                            activeIndex == 0
+                                ? Icons.home_rounded
+                                : Icons.home_outlined,
+                            Icons.search_rounded,
+                            activeIndex == 2
+                                ? Icons.library_music_rounded
+                                : Icons.library_music_outlined,
+                          ][i],
+                          color: activeIndex == i
+                              ? violet
+                              : const Color(0xFF535574),
+                          size: 23,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: activeIndex == i
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            color: activeIndex == i
+                                ? violet
+                                : const Color(0xFF535574),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(width: 7),
+          Semantics(
+            button: true,
+            label: music.hasTracks
+                ? 'Abrir player: ${music.current.title}'
+                : 'Escolher uma música',
+            child: InkWell(
+              onTap: onPlayer,
+              borderRadius: BorderRadius.circular(20),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Art(music.current.art, size: 43, radius: 15),
+                    if (music.playing)
+                      const Icon(
+                        Icons.equalizer_rounded,
+                        size: 23,
+                        color: Colors.white,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class EmptyLibrary extends StatelessWidget {
+  final MusicController music;
+  const EmptyLibrary({super.key, required this.music});
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.library_music_outlined, color: violet, size: 54),
+        const SizedBox(height: 18),
+        const Text(
+          'Suas músicas, do seu jeito.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Acesse as músicas do aparelho ou importe seus arquivos para começar.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: muted, height: 1.5),
+        ),
+        const SizedBox(height: 22),
+        if (music.supportsDeviceLibrary)
+          FilledButton.icon(
+            onPressed: music.scanning ? null : music.requestDeviceMusic,
+            icon: const Icon(Icons.folder_open_rounded),
+            label: const Text('Acessar músicas do dispositivo'),
+          ),
+        TextButton.icon(
+          onPressed: music.importAudio,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Importar músicas'),
+        ),
+      ],
+    ),
+  );
 }

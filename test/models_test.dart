@@ -8,8 +8,8 @@ void main() {
       title: 'Canção de Verão',
       artist: 'João',
       album: 'Férias',
-      art: 'chill',
-      source: 'night',
+      art: 'icon',
+      source: '/data/test.mp3',
     );
     expect(searchTracks([t], 'CANCAO joao').single.id, '1');
     expect(searchTracks([t], 'ferias').single.id, '1');
@@ -21,7 +21,7 @@ void main() {
       id: 'local-1',
       title: 'Minha faixa',
       artist: 'Eu',
-      art: 'chill',
+      art: 'icon',
       source: '/data/music/a.mp3',
       imported: true,
       lyrics: '[00:02.00]Olá',
@@ -53,7 +53,13 @@ void main() {
     expect(parseLrc('Uma letra sem tempo\nOutro verso'), isEmpty);
     expect(parseLrc('[00:01.00]   '), isEmpty);
   });
-  test('Cada faixa de demonstração tem um identificador único', () {
-    expect(demoTracks.map((t) => t.id).toSet().length, demoTracks.length);
+  test('Migração remove exemplos e preserva músicas do usuário', () {
+    final migrated = cleanLegacyPlaylists({
+      'Chill Vibes': ['blinding'],
+      'Minha playlist': ['flowers', 'local'],
+    });
+    expect(migrated.containsKey('Chill Vibes'), isFalse);
+    expect(migrated['Minha playlist'], ['local']);
+    expect(emptyTrack.source, isEmpty);
   });
 }

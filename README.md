@@ -1,158 +1,85 @@
-# Música
+# Música • Flutter 3.35.7
 
-Player mobile e web em Flutter, sem marca pessoal, construído a partir da imagem de referência enviada. Abre diretamente na página de música. Interface em português, tema claro, roxo e lavanda, menus flutuantes arredondados e reprodução em degradê rosa/vinho.
+Player mobile e web em português. Tema claro, menus arredondados e player em degradê seguindo a referência visual. Sem marca pessoal e sem músicas, capas comerciais, letras ou playlists pré-carregadas.
 
-## Compatibilidade
+## Atualizar o aplicativo Android
 
-Esta versão foi ajustada para **Flutter 3.35.7**. Não é necessário atualizar o Flutter para abrir no Chrome/Edge. As dependências diretas estão fixadas em versões cujos requisitos de Dart/Flutter aceitam esse SDK. Os projetos Android e iOS usam os templates oficiais da tag 3.35.7.
+Substitua **todo o conteúdo do projeto**, incluindo `android/`, pelo conteúdo da pasta `musica` do ZIP. A correção da notificação inclui recursos nativos e precisa de um APK novo; hot reload/restart não atualiza os recursos já instalados.
 
-Se estiver substituindo uma versão anterior deste projeto, copie o conteúdo da pasta `musica` do ZIP para a pasta do seu projeto (a mesma que contém `pubspec.yaml`) e execute:
+Na pasta que contém `pubspec.yaml`:
 
 ```powershell
 flutter clean
 flutter pub get
-flutter run -d chrome --web-port=7357
+flutter build apk --release
 ```
 
-O pacote não contém `pubspec.lock` gerado: a resolução completa das dependências ainda precisa ser executada no Flutter do desenvolvedor.
+Instale o arquivo `build/app/outputs/flutter-apk/app-release.apk` por cima da versão atual. Ou conecte o Android por USB e execute `flutter run` selecionando o aparelho.
 
-## Abrir no navegador (Chrome ou Edge)
+A migração remove os identificadores dos antigos exemplos, favoritos e letras vinculados a esses exemplos e as playlists fornecidas que não têm arquivos reais. Preserva importações, letras e playlists com músicas do usuário. Não é necessário desinstalar ou apagar os dados do app.
 
-A pasta `web/` já está incluída; não é necessário conectar um celular nem instalar um emulador para esta opção.
-
-Extraia o ZIP atualizado e substitua os arquivos da pasta do projeto. No PowerShell, dentro da pasta que contém `pubspec.yaml`:
+## Abrir no navegador
 
 ```powershell
 flutter pub get
 flutter run -d chrome --web-port=7357
 ```
 
-Para Edge, troque `chrome` por `edge`. Também é possível executar:
+Para Edge, troque `chrome` por `edge`. Alternativa no Windows: `powershell -ExecutionPolicy Bypass -File .\abrir-navegador.ps1`.
+
+O navegador mantém a interface mobile centralizada. Arquivos selecionados ficam no IndexedDB; use a mesma porta para manter a mesma origem entre execuções. Fechar a aba encerra a reprodução. O build web padrão é JavaScript, sem `--wasm`.
+
+## Sua biblioteca
+
+O aplicativo abre diretamente em Música, com estado vazio até que você permita o acesso ou importe arquivos. As telas não dependem de faixas de exemplo.
+
+No Android, toque **Biblioteca → Acessar músicas do dispositivo** e aceite a autorização. O app consulta o MediaStore e reproduz as faixas pela URI do sistema, com seus títulos, artistas e álbuns. Use Menu ⋯ → Configurações → Músicas do dispositivo para atualizar a leitura.
+
+- Android 13+: `READ_MEDIA_AUDIO`.
+- Android 12 e anteriores: `READ_EXTERNAL_STORAGE`, limitado à API 32.
+- Recusa da permissão não bloqueia o restante do app. Bloqueio permanente abre as configurações do Android.
+- A permissão lê músicas indexadas no armazenamento compartilhado; não os arquivos privados de outros aplicativos. Para outros arquivos, use Importar músicas.
+
+No iPhone e no navegador, use **Importar músicas** e selecione seus arquivos. Formatos disponíveis no seletor: MP3, WAV, M4A, AAC, OGG e FLAC. A decodificação depende do sistema/navegador.
+
+## Notificação de reprodução
+
+A versão 1.1.1 corrige a configuração ligada ao erro `Invalid notification (no valid small icon)`:
+
+- Ícone monocromático incluído em cinco densidades, além do recurso vetorial.
+- Referências nativas estáticas e `res/raw/keep.xml` preservam o ícone buscado pelo nome pelo serviço de áudio.
+- Minificação e remoção de recursos desativadas no build de release desta versão.
+- Verificação do recurso no APK e fallback para o ícone do launcher antes de inicializar a sessão.
+- Pedido de autorização de notificações no Android 13+ ao iniciar a primeira reprodução.
+
+Toque em uma música para reproduzir e abra a central de notificações. Se as notificações estiverem bloqueadas, use **Menu ⋯ → Configurações → Player nas notificações** para abrir as configurações reais do Android.
+
+A sessão de mídia mantém título, artista, capa genérica e controles de reprodução. A aparência real é definida pelo Android/fabricante. As opções de prévia em Configurações são apenas telas ilustrativas dentro do app.
+
+## Wi-Fi/internet
+
+As permissões normais `INTERNET`, `ACCESS_NETWORK_STATE` e `ACCESS_WIFI_STATE` permitem usar a conexão existente e acompanhar mudanças. Menu ⋯ → Configurações → Wi-Fi e internet mostra o estado e abre o painel de conexão do Android. Não é necessário um diálogo de autorização para essas permissões normais.
+
+## Menus e recursos
+
+- Barra flutuante: Início, Explorar, Biblioteca e acesso à reprodução.
+- Filtros: Músicas, Álbuns, Artistas, Playlists e Downloads.
+- Player: Adicionar, Download, Letras e Mais. Mais inclui fila de reprodução, timer e opções da faixa.
+- Download salva uma cópia de um arquivo seu usando o destino escolhido no sistema, ou o download do navegador.
+- Busca local, favoritos, playlists criadas por você e fila reordenável.
+- Letras `.lrc` sincronizadas ou `.txt`, ajuste de tamanho, compartilhamento e timer.
+- Spotify e YouTube Music abrem pesquisas externas. Não há login, catálogo fictício nem download/streaming desses serviços dentro do app.
+- Os gêneros em Explorar são atalhos para buscas externas, sem listas inventadas de músicas.
+
+## Verificação
+
+Consulte `VALIDACAO.md` para distinguir o que foi executado das verificações ainda pendentes em aparelho.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\abrir-navegador.ps1
-```
-
-O layout mantém a largura mobile centralizada na janela. O áudio começa após um toque em Reproduzir. Áudios importados ficam no IndexedDB do navegador; favoritos, playlists e preferências usam o armazenamento local. Use sempre a mesma porta para manter a mesma origem e acessar esses dados nas próximas execuções. Limpar os dados do site remove a biblioteca salva naquele navegador. A decodificação dos formatos depende do navegador.
-
-As prévias de notificação/tela bloqueada ficam disponíveis dentro do app; a inicialização do serviço nativo de áudio é exclusiva das plataformas mobile. No navegador, fechar a aba encerra a reprodução. Esta versão usa o build web padrão em JavaScript, sem a opção `--wasm`.
-
-Para gerar uma versão web de produção:
-
-```powershell
-flutter build web
-```
-
-Publique o conteúdo de `build/web/` em um servidor HTTP/HTTPS; não abra `index.html` diretamente pelo gerenciador de arquivos.
-
-## Executar no Windows com celular ou emulador Android
-
-Requisitos: Flutter 3.35.7 (Dart 3.9.x incluído no SDK) ou superior, Android Studio/Android SDK e um emulador Android ou celular com depuração USB ativada. Android mínimo: 7.0/API 24.
-
-1. Extraia o ZIP e abra a pasta `musica` no VS Code.
-2. Confira o ambiente com `flutter doctor` e os dispositivos com `flutter devices`.
-3. No PowerShell, dentro dessa pasta:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\iniciar.ps1
-```
-
-Ou execute os comandos individualmente:
-
-```sh
-flutter pub get
-flutter run
-```
-
-Se precisar recriar as pastas nativas:
-
-```sh
-flutter create --platforms=android,ios,web --org app.musica --project-name musica --no-pub .
-dart tool/configure.dart
-flutter pub get
-flutter run
-```
-
-No macOS/Linux: `bash iniciar.sh`. Para iPhone, use macOS com Xcode, configure a assinatura no projeto `ios/Runner.xcworkspace` e execute `flutter run` com um iPhone ou simulador selecionado. A compilação e reprodução no iPhone precisam de validação em dispositivo Apple.
-
-## Telas e navegação
-
-| Tela | Como acessar |
-| --- | --- |
-| Música | Página inicial, sem apresentação |
-| Reprodução | Toque numa faixa ou na capa à direita da barra flutuante |
-| Letra | Botão Letra/Letras no player |
-| Explorar | Lupa da barra inferior |
-| Biblioteca | Terceiro botão da barra inferior |
-| Busca | Campo de busca no início ou em Explorar |
-| Playlist | Chill Vibes ou outras playlists no início/biblioteca |
-| Serviços de música | Ícone no topo de Explorar ou avatar → Serviços |
-| Fila de reprodução | Botão Fila no player |
-| Notificação | Avatar → Notificação, para a prévia; a notificação real aparece ao reproduzir |
-| Tela bloqueada | Avatar → Tela bloqueada, para a prévia; os controles reais são integrados ao sistema |
-
-## Recursos implementados
-
-- Reprodução real de arquivos de áudio, pausar, buscar posição, anterior/próxima, aleatório e repetição.
-- Três instrumentais originais offline para testar o app assim que abrir.
-- Importação múltipla pelo seletor nativo; os arquivos são copiados para a área do app no celular e persistidos no IndexedDB no navegador, evitando dependência de caminhos temporários.
-- Biblioteca por músicas, álbuns, artistas, playlists e arquivos importados.
-- Pesquisa local sem distinção de acentos, combinando título, artista e álbum.
-- Favoritos e mix de favoritas; playlists criadas pelo usuário, inclusão e remoção de faixas.
-- Fila reordenável com alças de arrastar e opção de limpar.
-- Letras importadas em `.lrc` ou `.txt`. Arquivos LRC acompanham o tempo da música; toque num verso para avançar até ele.
-- Tamanho da letra, cópia do texto e timer de sono de 15/30/45/60 minutos.
-- Favoritos, playlists, letras, biblioteca importada e preferências persistidos no aparelho.
-- Reprodução em segundo plano e sessão de mídia com metadados e capa, configuradas para Android e iOS.
-- Ícone do aplicativo derivado da referência, sem texto ou marca pessoal.
-
-## O que a demonstração inclui
-
-Os títulos e capas representam o catálogo mostrado na imagem. **As gravações comerciais não estão incluídas**: o áudio de cada cartão é uma das três prévias instrumentais originais. O player identifica essas faixas como demonstração. Para ouvir suas músicas, use Avatar → Importar músicas ou o botão + em Biblioteca. Os formatos de importação são MP3, WAV, M4A, AAC, OGG e FLAC; o suporte de decodificação depende do aparelho.
-
-O texto exibido na letra de Blinding Lights foi transcrito somente da imagem fornecida e serve de prévia visual. O instrumental de demonstração não tem voz. Importe um LRC da sua faixa para ter a letra correspondente.
-
-As capas foram recortadas da imagem fornecida, cuja resolução é baixa. Isso preserva os elementos visuais da referência, mas limita a nitidez no player. Para substituir: mantenha os nomes dos arquivos em `assets/art/` ou altere os campos `art` do catálogo.
-
-## Spotify e YouTube Music
-
-Os botões abrem a busca correspondente no aplicativo/site do serviço. Não há login falso, estado “Conectado” fictício, download desses catálogos nem reprodução de Spotify/YouTube dentro do app. Uma integração de conta/streaming exigirá registro do aplicativo, autenticação e a solução de reprodução permitida por cada provedor. Não são necessárias chaves para as buscas externas implementadas.
-
-## Notificação e tela bloqueada
-
-As prévias dentro do app seguem a composição da imagem e seus controles acionam o mesmo player. Elas **não substituem** a central de notificações ou a tela bloqueada do aparelho. Na reprodução real, `just_audio_background` publica uma sessão de mídia; o sistema decide layout, botões e aparência conforme versão do Android/iOS e fabricante. O Flutter não pode impor uma tela bloqueada de outro sistema nem criar um notch físico.
-
-Documentação dos componentes usados:
-- https://pub.dev/packages/just_audio
-- https://pub.dev/packages/just_audio_background
-- https://pub.dev/packages/file_picker/versions/10.3.10
-- https://pub.dev/packages/url_launcher
-
-## Verificação e APK
-
-```sh
 flutter analyze
 flutter test
-flutter build apk --debug
 ```
 
-Saída do APK de desenvolvimento: `build/app/outputs/flutter-apk/app-debug.apk`.
+Requisitos: Flutter 3.35.7/Dart 3.9.x ou superior. Para Android, Android SDK e JDK compatível com a instalação do Flutter. Para iPhone, macOS com Xcode e assinatura configurada.
 
-Para uma distribuição pública, configure sua assinatura em Android e execute `flutter build appbundle`. A configuração padrão de release gerada pelo Flutter usa assinatura de desenvolvimento; ela não deve ser usada como assinatura de publicação.
-
-O arquivo `VALIDACAO.md` registra os comandos efetivamente executados durante a entrega. Não confundir testes de widgets com validação do áudio/notificação em um aparelho real.
-
-## Estrutura
-
-- `lib/main.dart`: inicialização de tema e sessão de mídia.
-- `lib/core/theme.dart`: cores e componentes Material 3.
-- `lib/models/track.dart`: catálogo, persistência, busca e leitor LRC.
-- `lib/services/music_controller.dart`: reprodução, arquivos, estado e preferências.
-- `lib/ui/`: telas e componentes reutilizáveis.
-- `assets/art/`: capas e ícone derivados da referência.
-- `assets/audio/`: instrumentais originais de demonstração.
-- `web/`: inicialização e ícones do navegador.
-- `lib/services/platform/`: armazenamento separado para mobile e navegador.
-- `abrir-navegador.ps1`: inicialização no Chrome ou Edge.
-- `tool/configure.dart`: configuração nativa idempotente.
-- `test/`: busca, persistência, interpretação LRC e componentes da interface.
+O projeto de release usa a assinatura de desenvolvimento do template. Para publicação pública, configure sua assinatura própria.

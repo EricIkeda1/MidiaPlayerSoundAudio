@@ -16,6 +16,11 @@ class PlayerScreen extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: music,
     builder: (context, _) {
+      if (!music.hasTracks)
+        return PageFrame(
+          title: 'Reprodução',
+          child: SingleChildScrollView(child: EmptyLibrary(music: music)),
+        );
       final track = music.current;
       return AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle.light,
@@ -187,8 +192,8 @@ class PlayerScreen extends StatelessWidget {
                                 ),
                                 _action(
                                   Icons.download_rounded,
-                                  'Importar',
-                                  music.importAudio,
+                                  'Download',
+                                  music.downloadCurrent,
                                 ),
                                 _action(
                                   Icons.lyrics_outlined,
@@ -196,29 +201,12 @@ class PlayerScreen extends StatelessWidget {
                                   () => go(context, LyricsScreen(music: music)),
                                 ),
                                 _action(
-                                  Icons.queue_music_rounded,
-                                  'Fila',
-                                  () => go(context, QueueScreen(music: music)),
+                                  Icons.more_horiz_rounded,
+                                  'Mais',
+                                  () => playerMore(context, music),
                                 ),
                               ],
                             ),
-                            if (!track.imported)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 20),
-                                child: InkWell(
-                                  onTap: () => message(
-                                    context,
-                                    'O áudio é uma prévia instrumental original. Importe suas músicas para ouvir as gravações reais.',
-                                  ),
-                                  child: const Text(
-                                    'Áudio de demonstração',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.white54,
-                                    ),
-                                  ),
-                                ),
-                              ),
                           ],
                         ),
                       ),
@@ -258,16 +246,6 @@ class PlayerScreen extends StatelessWidget {
     ),
   );
 }
-
-// Texto visível na referência enviada pelo usuário; não é uma letra obtida de um serviço.
-const referenceLyrics = '''[00:00.00]I said, ooh
-[00:03.00]I’m blinded by the lights
-[00:06.00]No, I can’t sleep
-[00:09.00]until I feel your touch
-[00:12.00]I said, ooh, I’m drowning in the night
-[00:15.00]Oh, when I’m like this
-[00:18.00]you’re the one I trust
-[00:21.00]Hey, hey, hey''';
 
 class LyricsScreen extends StatefulWidget {
   final MusicController music;
@@ -314,9 +292,7 @@ class _LyricsScreenState extends State<LyricsScreen> {
     }
   }
 
-  List<LyricLine> _lines() => parseLrc(
-    m.current.lyrics ?? (m.current.id == 'blinding' ? referenceLyrics : ''),
-  );
+  List<LyricLine> _lines() => parseLrc(m.current.lyrics ?? '');
   int _active(List<LyricLine> lines) {
     var result = 0;
     for (var i = 0; i < lines.length; i++) {
@@ -334,6 +310,11 @@ class _LyricsScreenState extends State<LyricsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!m.hasTracks)
+      return PageFrame(
+        title: 'Letras',
+        child: SingleChildScrollView(child: EmptyLibrary(music: m)),
+      );
     final track = m.current, lines = _lines();
     final plain = track.lyrics != null && lines.isEmpty ? track.lyrics : null;
     final active = _active(lines);
@@ -526,27 +507,18 @@ class _LyricsScreenState extends State<LyricsScreen> {
                           icon: const Icon(Icons.text_fields_rounded),
                         ),
                         IconButton(
-                          tooltip: 'Copiar letra',
-                          onPressed: () {
-                            Clipboard.setData(
-                              ClipboardData(
-                                text:
-                                    plain ??
-                                    lines.map((l) => l.text).join('\n'),
-                              ),
+                          tooltip: 'Compartilhar letra',
+                          onPressed: () async {
+                            final shared = await m.shareLyrics(
+                              plain ?? lines.map((l) => l.text).join('\n'),
                             );
-                            message(context, 'Letra copiada');
+                            if (!shared && context.mounted)
+                              message(
+                                context,
+                                'Letra copiada para compartilhar',
+                              );
                           },
-                          icon: const Icon(Icons.copy_rounded, size: 22),
-                        ),
-                        IconButton(
-                          tooltip: 'Reproduzir ou pausar',
-                          onPressed: m.toggle,
-                          icon: Icon(
-                            m.playing
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                          ),
+                          icon: const Icon(Icons.share_outlined, size: 22),
                         ),
                         IconButton(
                           tooltip: 'Timer',
@@ -599,6 +571,53 @@ void sleepMenu(BuildContext context, MusicController music) =>
                 onTap: () {
                   music.sleep(null);
                   Navigator.pop(sheet);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+void playerMore(BuildContext context, MusicController music) =>
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.queue_music_rounded),
+                title: const Text('Fila de reprodução'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  go(context, QueueScreen(music: music));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.timer_outlined),
+                title: const Text('Timer de sono'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  sleepMenu(context, music);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.hub_outlined),
+                title: const Text('Serviços de música'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  go(context, ServicesScreen(music: music));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.more_horiz_rounded),
+                title: const Text('Opções da música'),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  trackMenu(context, music, music.current);
                 },
               ),
             ],

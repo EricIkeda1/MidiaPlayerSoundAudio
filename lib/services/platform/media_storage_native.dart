@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
 
 Future<bool> hasAudio(String source) => File(source).exists();
 
@@ -21,7 +22,8 @@ Future<String> persistAudio({
   return destination.path;
 }
 
-Future<Uri> audioUri(String source) async => Uri.file(source);
+Future<Uri> audioUri(String source) async =>
+    source.startsWith('content://') ? Uri.parse(source) : Uri.file(source);
 
 Future<Uri> coverUri(String art) async {
   final dir = await getApplicationSupportDirectory();
@@ -43,3 +45,33 @@ Future<String> readLyrics({String? path, Uint8List? bytes}) async {
 }
 
 void releaseMedia() {}
+
+Future<Uint8List> readAudio(String source) async {
+  if (source.startsWith('content://')) {
+    final bytes = await const MethodChannel(
+      'app.musica/device_library',
+    ).invokeMethod<Uint8List>('readAudio', {'source': source});
+    if (bytes == null) throw StateError('Áudio indisponível.');
+    return bytes;
+  }
+  return File(source).readAsBytes();
+}
+
+Future<void> saveDownload(Uint8List bytes, String name, String mime) async {
+  await FilePicker.platform.saveFile(
+    dialogTitle: 'Salvar áudio',
+    fileName: name,
+    bytes: bytes,
+  );
+}
+
+Future<String> audioExtension(String source) async {
+  if (source.startsWith('content://')) {
+    return await const MethodChannel(
+          'app.musica/device_library',
+        ).invokeMethod<String>('audioExtension', {'source': source}) ??
+        'audio';
+  }
+  final extension = source.split('.').last.toLowerCase();
+  return RegExp(r'^[a-z0-9]{1,6}$').hasMatch(extension) ? extension : 'audio';
+}
